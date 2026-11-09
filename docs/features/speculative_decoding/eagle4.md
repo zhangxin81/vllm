@@ -81,6 +81,43 @@ draft-extension work.
 
 ## Supported scope and validation
 
+### Flash Next development path
+
+`Qwen/Qwen3.8-Flash-Next` requires a separately trained EAGLE-4 draft. The
+published Qwen3.8-27B draft has `target_hidden_size=5120` and cannot consume
+Flash Next's 2560-wide features. The target input embedding and the draft
+embedding widths and vocabulary sizes must also match. See [feature extraction](extract_hidden_states.md)
+for the Flash Next feature contract.
+
+This development integration admits explicit chain mode (`node_top_k=1`) for
+matched drafts. It rejects tree mode: Flash Next's QSA indexer and PLE short
+convolution have not implemented ancestor-aware verification and accepted-path
+state commit. Replacing QSA with the plugin's dense tree attention would change
+the target model's computation.
+
+For a single-node 1P1D deployment, give P GPUs 0--3 and D GPUs 4--7, and use
+TP4 on both. This is two independent engines, each with DP1 and PP1. With NIXL,
+both sides must load the same target revision, draft weights and feature layout,
+and transfer all target, indexer, recurrent, PLE and draft cache groups. P may
+use one draft token and D a deeper chain; the committed state and the draft
+KV prefix must agree when D resumes. Use `node_top_k=1` on both sides and leave
+`num_speculative_tokens` to the plugin's width configuration.
+
+Qualify eager execution first, then compare against CUDA graphs and compilation
+on the same requests. The efficient candidate head and target embedding sharing
+are supplied by the external plugin. Precision changes to its full-vocabulary
+or low-rank candidate-head tensors need a compatible implementation: those
+kernels read weight tensors directly, so enabling generic LM-head quantization
+alone is not sufficient. Cost tables must be measured on H20 TP4.
+
+No Flash Next EAGLE-4 checkpoint, H20 inference result, PD correctness result or
+speedup is provided by this development patch. The extraction regression runs
+the real FP8 target at TP4, with and without HC SP, in eager and graph modes; it does not qualify a draft
+or NIXL. Full EAGLE-4 qualification additionally requires positive draft
+acceptance, output comparisons, successful KV transfer, prefix reuse and
+preemption tests, and end-to-end latency/throughput measurements against the
+same deployment without speculation.
+
 This integration targets single-node NVIDIA CUDA execution with matched target
 and draft TP sizes. Other parallel execution modes (PP, DP, context parallelism
 and dual batch overlap) require the registered method to opt in explicitly.

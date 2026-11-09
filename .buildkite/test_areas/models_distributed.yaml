@@ -2,6 +2,22 @@ group: Models - Distributed
 depends_on: 
   - image-build
 steps:
+- label: ":nvidia: (H200) Flash Next hidden-state extraction"
+  key: qwen4-exp-hidden-state-extraction
+  device: h200
+  num_devices: 4
+  timeout_in_minutes: 60
+  working_dir: "/vllm-workspace/tests"
+  source_file_dependencies:
+  - vllm/models/qwen4_exp/
+  - vllm/model_executor/models/config.py
+  - vllm/model_executor/models/extract_hidden_states.py
+  - vllm/v1/worker/gpu/spec_decode/extract_hidden_states.py
+  - vllm/distributed/kv_transfer/kv_connector/v1/example_hidden_states_connector.py
+  - tests/models/qwen4_exp/test_hidden_states.py
+  commands:
+  - pytest -v -s models/qwen4_exp/test_hidden_states.py
+
 - label: ":nvidia: (L4) [Nightly] Qwen4 Exp SP"
   key: qwen4-exp-sp-tests-4-gpus
   # Nightly only: 4-GPU L4 pods wait behind smaller jobs on per-PR runs.

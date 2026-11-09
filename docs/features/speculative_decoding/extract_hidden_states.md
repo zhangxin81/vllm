@@ -7,6 +7,26 @@ The Hidden State Extraction feature allows vLLM to save intermediate layer activ
 
 ## Offline Example
 
+### Qwen3.8-Flash-Next feature layout
+
+On NVIDIA, Flash Next can expose native-width features with Model Runner V2
+and `pipeline_parallel_size=1`. Engine layer index `L` captures the 2560-wide
+input to layer `L`'s attention, after its learned HyperConnection read and PLE
+addition. The final index `48` captures the final mixer's language-model-head
+input. These are not the 10240-wide multi-stream states used by native MTP.
+
+For example, set `eagle_aux_hidden_state_layer_ids` to `[4, 24, 44, 48]` to
+capture three intermediate features and the final head input. A draft trained
+on these features must use the same capture points during inference. The final
+feature already includes the final mixer's normalization; do not apply a
+second output norm when forming training target logits.
+
+The saved tensor has shape `[num_tokens, num_selected_layers, 2560]`, including
+with TP, HC sequence parallelism and chunked prefill. Intermediate capture
+reuses the attention input already produced by the layer's HC read and SP
+gather; it adds no HC projection, gather or feature clone. AMD and auxiliary
+feature transport over PP are not covered by this implementation.
+
 ```python
 import tempfile
 

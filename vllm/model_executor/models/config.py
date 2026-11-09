@@ -1025,14 +1025,48 @@ class Qwen4ExpForConditionalGenerationConfig(Qwen3_5ForConditionalGenerationConf
         if multimodal_config is not None and multimodal_config.language_model_only:
             _strip_qwen4_exp_mrope(vllm_config.model_config)
         spec_config = vllm_config.speculative_config
+        if spec_config is not None and spec_config.method == "eagle_harness":
+            if spec_config.method_config.get("node_top_k") != 1:
+                raise NotImplementedError(
+                    "Qwen4Exp EAGLE-4 requires chain mode (node_top_k=1); "
+                    "QSA and PLE do not implement tree verification"
+                )
+            draft = spec_config.draft_model_config
+            if draft is None or (
+                draft.get_hidden_size() != text_config.hidden_size
+                or getattr(
+                    draft.hf_config, "target_hidden_size", draft.get_hidden_size()
+                )
+                != text_config.hidden_size
+            ):
+                raise ValueError(
+                    "Qwen4Exp EAGLE-4 requires a matching target_hidden_size "
+                    "and draft embedding width; Qwen3.8-27B drafts are incompatible"
+                )
+            if draft.get_vocab_size() != text_config.vocab_size:
+                raise ValueError(
+                    "Qwen4Exp EAGLE-4 requires the target vocabulary; "
+                    "the draft reuses the target input embedding"
+                )
+            if parallel_config.pipeline_parallel_size != 1:
+                raise NotImplementedError("Qwen4Exp EAGLE-4 requires PP=1")
+            return
+        if (
+            spec_config is not None
+            and spec_config.method == "extract_hidden_states"
+            and parallel_config.pipeline_parallel_size != 1
+        ):
+            raise NotImplementedError("Qwen4Exp hidden-state extraction requires PP=1")
         if spec_config is not None and spec_config.method not in {
             "mtp",
             "ngram",
             "ngram_gpu",
+            "extract_hidden_states",
         }:
             raise NotImplementedError(
                 "Qwen4Exp speculative decoding supports only its native MTP "
-                "checkpoint and linear n-gram proposers"
+                "checkpoint, linear n-gram proposers, hidden-state extraction "
+                "and matching EAGLE-4 chains"
             )
 
 
